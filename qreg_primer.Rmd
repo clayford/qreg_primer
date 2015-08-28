@@ -1,0 +1,188 @@
+---
+title: "Quantile Regression Primer"
+author: "Clay Ford"
+date: "August 2015"
+output: beamer_presentation
+---
+
+## What is quantile regression?
+
+Estimating the **quantile** of a dependent variable, conditional on the values of independent variables.
+
+In traditional regression, we estimate the **mean** of a dependent variable, conditional on the values of independent variables.
+
+The default quantile in R and Stata is the median.
+
+Quantile regression for _k_ quantiles results in _k_ regression summaries.
+
+## Why use quantile regression?
+
+To quote my reference (Cade & Noon): 
+
+> there may be a weak or no predictive relationship between the **mean** of the response variable (y) distribution and the measured predictive factors (X). Yet there may be stronger, useful predictive relationships with other parts **(ie, quantiles)** of the response variable distribution. 
+
+Emphasis mine. In other words, it can be useful if you have unequal variation.
+
+## Example data that may benefit from quantile regression
+
+```{r, cache=TRUE, message=FALSE, echo=FALSE}
+library(quantreg)
+data(engel)
+plot(foodexp ~ income, data=engel)
+```
+
+
+## Example data where quantile regression isn't very useful
+
+```{r, cache=TRUE, message=FALSE, echo=FALSE}
+set.seed(1)
+x <- seq(1, 5, length.out = 100)
+y <- 3 + 2*x + rnorm(100,sd=1)
+plot(y ~ x, ylim=c(0,15))
+```
+
+
+## How to implement in R
+
+The `quantreg` package provides the `rq` function for quantile regression.
+
+It works much like the `lm` function with `formula`, `data`, `subset`, `weights` and `na.action` arguments. In addition it has a `tau` argument for specifying the quantiles.
+
+Basic usage:   
+`library(quantreg)`   
+`rq(foodexp ~ income, data = engel)  #median`     
+`rq(foodexp ~ income, data = engel, tau = c(.25,0.5, 0.75))`   
+
+## Creating "rq" and "rqs" objects
+
+create an `rq` object (_one quantile_):     
+`qout1 <- rq(stack.loss ~ stack.x, tau = .5)`
+
+create an `rqs` object (_multiple quantiles_):     
+`qout2 <- rq(stack.loss ~ stack.x, tau = c(.25,0.5, 0.75))`
+
+Both objects have a summary method, like `lm`.
+
+## summary(qout1)
+
+```{r, echo=FALSE, cache=TRUE, message=FALSE}
+library(quantreg)
+qout1 <- rq(stack.loss ~ stack.x, tau = .5)
+summary(qout1)
+```
+
+## Standard Errors for quantile regression
+
+There are several varieties of standard errors for quantile regression.
+
+In R, the desired standard errors are specified in the `summary.rq` function using the `se` argument.
+
+Five available methods:
+
+1. `"rank"` - default if sample size is less than 1000   
+2. `"iid"`     
+3. `"nid"` - equivalent of using `vce(robust)` in Stata; default if sample > 1000    
+4. `"ker"`     
+5. `"boot"`    
+
+See `help(summary.rq)` for details.
+
+## Plotting methods
+
+The `quantreg` package provides plotting methods for `rqs` objects and `summary.rqs` objects that allow you to visualize sequences of quantile regression summaries.
+
+The main difference between the two is that plotting the `summary.rqs` object adds confidence bands.
+
+Example:   
+`fm <- rq(foodexp ~ income, data = engel, tau = 1:9/10)`   
+`sfm <- summary(fm)`   
+`plot(fm)`   
+`plot(sfm)`   
+
+## plot(fm)
+
+```{r, cache=TRUE, message=FALSE, echo=FALSE}
+fm <- rq(foodexp ~ income, data = engel, tau = 1:9/10)
+plot(fm)
+```
+
+
+## plot(sfm)
+
+```{r, cache=TRUE, message=FALSE, echo=FALSE, warning=FALSE}
+sfm <- summary(fm) 
+plot(sfm)
+```
+
+
+## Plotting the quantile regressions separately
+
+```{r, cache=TRUE, message=FALSE, echo=FALSE, fig.height=4}
+data(engel)
+attach(engel)
+plot(income,foodexp,xlab="Household Income",ylab="Food Expenditure",type = "n", cex=.5)
+points(income,foodexp,cex=.5,col="blue")
+taus <- c(.05,.1,.25,.75,.9,.95)
+xx <- seq(min(income),max(income),100)
+f <- coef(rq((foodexp)~(income),tau=taus))
+yy <- cbind(1,xx)%*%f
+for(i in 1:length(taus)){
+        lines(xx,yy[,i],col = "gray")
+        }
+abline(lm(foodexp ~ income),col="red",lty = 2)
+abline(rq(foodexp ~ income), col="blue")
+legend("bottomright",c("mean fit", "median fit"),
+	col = c("red","blue"),lty = c(2,1))
+```
+
+Note: `taus <- c(.05,.1,.25,.75,.9,.95)`
+
+## Visualizing quantile regression summaries for iid errors with equal variance
+
+```{r, cache=TRUE, message=FALSE, echo=FALSE, warning=FALSE, fig.height=4}
+plot(summary(rq(y ~ x,tau = 1:19/20), se="nid"), parm="x")
+
+```
+
+Note: the quantile coefficients don't differ from OLS estimate.
+
+## Implementation in Stata
+
+Stata provides the `qreg` function.
+
+Basic usage (using `engel` data that comes with `quantreg` package):   
+
+`import delimited "C:\Users\jcf2d\engel.csv", clear`     
+`qreg foodexp income`   
+
+The second line runs a median regression and returns summary results. 
+
+Note: I was unable to replicate the default standard errors in R.
+
+## Visualizing quantile regression summaries in Stata
+
+The user-contributed Stata package, `grqreg`, creates graphs similar to the `quantreg` plotting methods.
+
+Install and basic usage:   
+
+`ssc install grqreg`    
+`qreg foodexp income, vce(robust)`    
+`grqreg, ci ols cons`   
+
+Note: the `vce(robust)` option produces same standard errors as `summary(rq.object, se="nid")`
+
+## Visualizing quantile regression summaries in Stata
+
+![alt text](grqreg.png)
+
+
+## More information
+
+Cade BS and Noon BR. 2003. A gentle introduction to quantile regression for ecologists. _Front Ecol Environ_ 1(8): 412- 420    
+http://www.econ.uiuc.edu/~roger/research/rq/QReco.pdf
+
+**`quanteg` vignette that comes with package**
+
+**qreg section of Stata manual (r.pdf)**
+
+
